@@ -6,7 +6,8 @@ export default function QuestionPanel({ phase, responses, notes, showGuidance, o
   const [generatingPhase, setGeneratingPhase] = useState(false);
 
   const handleGeneratePhase = async () => {
-    if (!hasApiKey()) { alert("Please set your Gemini API key in Settings first."); return; }
+    const hasKey = await hasApiKey();
+    if (!hasKey) { alert("Please set your Gemini API key in Settings first."); return; }
     if (!aiState) return;
     setGeneratingPhase(true);
     try {
@@ -69,7 +70,7 @@ export default function QuestionPanel({ phase, responses, notes, showGuidance, o
             style={styles.aiBtn}
             onClick={handleGeneratePhase}
             disabled={generatingPhase}
-            title={hasApiKey() ? "Generate phase commentary using AI" : "Set API key in Settings first"}
+            title="Generate phase commentary using AI"
           >
             {generatingPhase ? "⏳ Generating..." : "✨ Generate with AI"}
           </button>

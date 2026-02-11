@@ -1,18 +1,61 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { listSavedAssessments, deleteAssessment, exportAssessmentJSON, importAssessmentJSON } from "../utils/persistence";
 import { getApiKey, setApiKey, hasApiKey } from "../utils/ai";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function Header({ inquiryName, setInquiryName, consultDate, setConsultDate, onSave, onLoad, onNew }) {
+  const { user, signOut } = useAuth();
   const [showSaves, setShowSaves] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState(getApiKey());
+  const [apiKeyInput, setApiKeyInput] = useState("");
   const [keySaved, setKeySaved] = useState(false);
-  const saved = listSavedAssessments();
+  const [saved, setSaved] = useState([]);
+  const [loadingSaved, setLoadingSaved] = useState(false);
+  const [apiKeyLoaded, setApiKeyLoaded] = useState(false);
+  const [savingKey, setSavingKey] = useState(false);
 
-  const handleSaveKey = () => {
-    setApiKey(apiKeyInput);
-    setKeySaved(true);
-    setTimeout(() => setKeySaved(false), 2000);
+  // Load saved assessments when panel opens
+  useEffect(() => {
+    if (showSaves) {
+      setLoadingSaved(true);
+      listSavedAssessments()
+        .then(setSaved)
+        .catch(() => setSaved([]))
+        .finally(() => setLoadingSaved(false));
+    }
+  }, [showSaves]);
+
+  // Load API key when settings panel opens
+  useEffect(() => {
+    if (showSettings && !apiKeyLoaded) {
+      getApiKey().then((key) => {
+        setApiKeyInput(key);
+        setApiKeyLoaded(true);
+      });
+    }
+  }, [showSettings, apiKeyLoaded]);
+
+  const handleSaveKey = async () => {
+    setSavingKey(true);
+    try {
+      await setApiKey(apiKeyInput);
+      setKeySaved(true);
+      setTimeout(() => setKeySaved(false), 2000);
+    } catch (err) {
+      alert("Failed to save API key: " + err.message);
+    } finally {
+      setSavingKey(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm("Delete this assessment?")) return;
+    try {
+      await deleteAssessment(id);
+      setSaved((prev) => prev.filter((a) => a.id !== id));
+    } catch (err) {
+      alert("Failed to delete: " + err.message);
+    }
   };
 
   const handleImport = async () => {
@@ -49,6 +92,12 @@ export default function Header({ inquiryName, setInquiryName, consultDate, setCo
             <button style={styles.headerBtn} onClick={onNew} title="New blank assessment">New</button>
             <button style={{ ...styles.headerBtn, fontSize: 16 }} onClick={() => setShowSettings(!showSettings)} title="Settings">⚙️</button>
           </div>
+          {user && (
+            <div style={styles.userSection}>
+              <span style={styles.userEmail}>{user.email}</span>
+              <button style={styles.signOutBtn} onClick={signOut} title="Sign out">Sign Out</button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -61,7 +110,9 @@ export default function Header({ inquiryName, setInquiryName, consultDate, setCo
               <button style={styles.closeBtn} onClick={() => setShowSaves(false)}>&times;</button>
             </div>
           </div>
-          {saved.length === 0 ? (
+          {loadingSaved ? (
+            <p style={styles.noSaves}>Loading saved assessments...</p>
+          ) : saved.length === 0 ? (
             <p style={styles.noSaves}>No saved assessments yet. Click Save to create one.</p>
           ) : (
             <div style={styles.savesList}>
@@ -74,7 +125,7 @@ export default function Header({ inquiryName, setInquiryName, consultDate, setCo
                   <div style={styles.saveActions}>
                     <button style={styles.actionBtn} onClick={() => { onLoad(a); setShowSaves(false); }}>Load</button>
                     <button style={styles.actionBtn} onClick={() => exportAssessmentJSON(a)}>Export</button>
-                    <button style={{ ...styles.actionBtn, color: "#C00000" }} onClick={() => { if (confirm("Delete this assessment?")) { deleteAssessment(a.id); setShowSaves(false); setTimeout(() => setShowSaves(true), 0); } }}>Delete</button>
+                    <button style={{ ...styles.actionBtn, color: "#C00000" }} onClick={() => handleDelete(a.id)}>Delete</button>
                   </div>
                 </div>
               ))}
@@ -97,15 +148,16 @@ export default function Header({ inquiryName, setInquiryName, consultDate, setCo
                 <input
                   style={styles.keyInput}
                   type="password"
-                  placeholder="Enter your Gemini API key..."
+                  placeholder={apiKeyLoaded ? "Enter your Gemini API key..." : "Loading..."}
                   value={apiKeyInput}
                   onChange={(e) => setApiKeyInput(e.target.value)}
+                  disabled={!apiKeyLoaded}
                 />
-                <button style={styles.saveKeyBtn} onClick={handleSaveKey}>
-                  {keySaved ? "✓ Saved" : "Save Key"}
+                <button style={styles.saveKeyBtn} onClick={handleSaveKey} disabled={savingKey || !apiKeyLoaded}>
+                  {savingKey ? "Saving..." : keySaved ? "✓ Saved" : "Save Key"}
                 </button>
               </div>
-              {hasApiKey() && (
+              {apiKeyLoaded && apiKeyInput && (
                 <p style={styles.keyStatus}>✅ API key configured — AI features enabled</p>
               )}
             </div>
@@ -126,6 +178,9 @@ const styles = {
   inputSmall: { padding: "8px 12px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.12)", color: "#fff", fontSize: 13, outline: "none", width: 130 },
   btnGroup: { display: "flex", gap: 6 },
   headerBtn: { padding: "7px 16px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.15)", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "background 0.2s" },
+  userSection: { display: "flex", alignItems: "center", gap: 8, marginLeft: 8, paddingLeft: 8, borderLeft: "1px solid rgba(255,255,255,0.3)" },
+  userEmail: { fontSize: 12, opacity: 0.85, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  signOutBtn: { padding: "5px 12px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.1)", color: "#fff", fontSize: 11, fontWeight: 500, cursor: "pointer" },
   savesPanel: { background: "#fff", borderRadius: 12, border: "1px solid #e0e5ec", marginBottom: 24, overflow: "hidden" },
   savesPanelHeader: { padding: "16px 24px", background: "#f0f4fa", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e0e5ec" },
   savesTitle: { fontSize: 15, fontWeight: 600, color: "#1B2A4A", margin: 0 },

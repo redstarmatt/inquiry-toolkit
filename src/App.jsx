@@ -2,6 +2,8 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { PHASES } from "./data/phases";
 import { saveAssessment, loadAssessment, getCurrentAssessmentId } from "./utils/persistence";
 import { generateOverallAssessment, hasApiKey } from "./utils/ai";
+import { useAuth } from "./contexts/AuthContext";
+import AuthPage from "./components/AuthPage";
 import Header from "./components/Header";
 import ProgressBar from "./components/ProgressBar";
 import PhaseCard from "./components/PhaseCard";
@@ -11,6 +13,8 @@ import TimelineChart from "./components/TimelineChart";
 import Report from "./components/Report";
 
 function App() {
+  const { user, loading: authLoading } = useAuth();
+
   const [assessmentId, setAssessmentId] = useState(null);
   const [currentPhase, setCurrentPhase] = useState(null);
   const [responses, setResponses] = useState({});
@@ -27,15 +31,21 @@ function App() {
   const [customDuration, setCustomDuration] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
   const [generatingOverall, setGeneratingOverall] = useState(false);
+  const [appLoading, setAppLoading] = useState(true);
 
-  // Auto-load last assessment on mount
+  // Auto-load last assessment on mount (once authenticated)
   useEffect(() => {
+    if (!user) { setAppLoading(false); return; }
     const currentId = getCurrentAssessmentId();
     if (currentId) {
-      const saved = loadAssessment(currentId);
-      if (saved) restoreState(saved);
+      loadAssessment(currentId)
+        .then((saved) => { if (saved) restoreState(saved); })
+        .catch(() => {})
+        .finally(() => setAppLoading(false));
+    } else {
+      setAppLoading(false);
     }
-  }, []);
+  }, [user]);
 
   function getState() {
     return {
@@ -61,11 +71,15 @@ function App() {
     setShowReport(false);
   }
 
-  const handleSave = useCallback(() => {
-    const saved = saveAssessment(getState());
-    setAssessmentId(saved.id);
-    setSaveMessage("Saved!");
-    setTimeout(() => setSaveMessage(""), 2000);
+  const handleSave = useCallback(async () => {
+    try {
+      const saved = await saveAssessment(getState());
+      setAssessmentId(saved.id);
+      setSaveMessage("Saved!");
+      setTimeout(() => setSaveMessage(""), 2000);
+    } catch (err) {
+      alert("Save failed: " + err.message);
+    }
   }, [assessmentId, inquiryName, consultDate, responses, notes, phaseCommentary, overallCommentary, selectedScale, customBudget, customDuration, planningNotes]);
 
   const handleLoad = useCallback((data) => {
@@ -142,7 +156,8 @@ function App() {
   const highRiskGaps = useMemo(() => gapAnalysis.filter((g) => g.question.risk === "high").length, [gapAnalysis]);
 
   const handleGenerateOverall = useCallback(async () => {
-    if (!hasApiKey()) { alert("Please set your Gemini API key in Settings first."); return; }
+    const hasKey = await hasApiKey();
+    if (!hasKey) { alert("Please set your Gemini API key in Settings first."); return; }
     setGeneratingOverall(true);
     try {
       const text = await generateOverallAssessment({
@@ -158,6 +173,23 @@ function App() {
   }, [inquiryName, consultDate, responses, notes, phaseCommentary, gapAnalysis, phaseStats, selectedScale, customBudget, customDuration]);
 
   const activePhase = PHASES.find((p) => p.id === currentPhase);
+
+  // Show loading spinner while checking auth
+  if (authLoading || (user && appLoading)) {
+    return (
+      <div style={styles.loadingPage}>
+        <div style={styles.loadingCard}>
+          <h2 style={styles.loadingTitle}>Public Inquiry Consulting Tool</h2>
+          <p style={styles.loadingText}>Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show auth page if not logged in
+  if (!user) {
+    return <AuthPage />;
+  }
 
   return (
     <div style={styles.app}>
@@ -237,7 +269,6 @@ function App() {
             style={styles.aiBtn}
             onClick={handleGenerateOverall}
             disabled={generatingOverall}
-            title={hasApiKey() ? "Generate assessment using AI" : "Set API key in Settings first"}
           >
             {generatingOverall ? "⏳ Generating..." : "✨ Generate with AI"}
           </button>
@@ -282,6 +313,10 @@ const styles = {
   overallTextarea: { width: "100%", padding: "14px 18px", border: "1px solid #d0d7e2", borderRadius: 8, fontSize: 14, fontFamily: "inherit", resize: "vertical", minHeight: 120, outline: "none", background: "#fafbfd", lineHeight: 1.7, boxSizing: "border-box" },
   aiBtn: { padding: "8px 18px", borderRadius: 8, border: "1px solid #7C3AED", background: "linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", transition: "opacity 0.2s", flexShrink: 0 },
   saveToast: { position: "fixed", top: 20, right: 20, background: "#70AD47", color: "#fff", padding: "10px 24px", borderRadius: 8, fontSize: 13, fontWeight: 600, zIndex: 1000, boxShadow: "0 2px 12px rgba(0,0,0,0.15)" },
+  loadingPage: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f8f9fb", fontFamily: "'Segoe UI', Arial, sans-serif" },
+  loadingCard: { textAlign: "center", padding: 40 },
+  loadingTitle: { fontSize: 22, fontWeight: 700, color: "#1B2A4A", margin: "0 0 12px" },
+  loadingText: { fontSize: 14, color: "#718096" },
 };
 
 export default App;

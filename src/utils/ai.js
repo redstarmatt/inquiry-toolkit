@@ -1,22 +1,55 @@
-const API_KEY_STORAGE = "inquiry-toolkit-gemini-key";
+import { supabase } from "../lib/supabase";
 
-export function getApiKey() {
-  return localStorage.getItem(API_KEY_STORAGE) || "";
+// In-memory cache for the API key (avoids hitting Supabase on every check)
+let cachedApiKey = null;
+let cacheLoaded = false;
+
+export async function getApiKey() {
+  if (cacheLoaded) return cachedApiKey || "";
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return "";
+    const { data } = await supabase
+      .from("user_profiles")
+      .select("gemini_api_key")
+      .eq("id", user.id)
+      .single();
+    cachedApiKey = data?.gemini_api_key || "";
+    cacheLoaded = true;
+    return cachedApiKey;
+  } catch {
+    return "";
+  }
 }
 
-export function setApiKey(key) {
-  localStorage.setItem(API_KEY_STORAGE, key);
+export async function setApiKey(key) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  const { error } = await supabase
+    .from("user_profiles")
+    .update({ gemini_api_key: key, updated_at: new Date().toISOString() })
+    .eq("id", user.id);
+  if (error) throw error;
+  cachedApiKey = key;
+  cacheLoaded = true;
 }
 
-export function hasApiKey() {
-  return !!getApiKey();
+export async function hasApiKey() {
+  const key = await getApiKey();
+  return !!key;
+}
+
+// Reset cache on sign-out so next user gets fresh state
+export function resetApiKeyCache() {
+  cachedApiKey = null;
+  cacheLoaded = false;
 }
 
 /**
  * Call Gemini API with a prompt. Uses gemini-2.5-flash.
  */
 async function callGemini(prompt) {
-  const key = getApiKey();
+  const key = await getApiKey();
   if (!key) throw new Error("No Gemini API key configured");
 
   const res = await fetch(
