@@ -1,0 +1,32 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #f8f9fb;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  min-width: 320px;
+}
+
+::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+textarea::placeholder,
+input.note-input::placeholder {
+  color: #a0aec0;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+}
+
+/* Reset button styles from Vite default */
+button {
+  border: none;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
