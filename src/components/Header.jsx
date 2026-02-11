@@ -1,9 +1,19 @@
 import { useState } from "react";
 import { listSavedAssessments, deleteAssessment, exportAssessmentJSON, importAssessmentJSON } from "../utils/persistence";
+import { getApiKey, setApiKey, hasApiKey } from "../utils/ai";
 
 export default function Header({ inquiryName, setInquiryName, consultDate, setConsultDate, onSave, onLoad, onNew }) {
   const [showSaves, setShowSaves] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState(getApiKey());
+  const [keySaved, setKeySaved] = useState(false);
   const saved = listSavedAssessments();
+
+  const handleSaveKey = () => {
+    setApiKey(apiKeyInput);
+    setKeySaved(true);
+    setTimeout(() => setKeySaved(false), 2000);
+  };
 
   const handleImport = async () => {
     const input = document.createElement("input");
@@ -37,6 +47,7 @@ export default function Header({ inquiryName, setInquiryName, consultDate, setCo
             <button style={styles.headerBtn} onClick={onSave} title="Save assessment">Save</button>
             <button style={styles.headerBtn} onClick={() => setShowSaves(!showSaves)} title="Load / manage saved assessments">Load</button>
             <button style={styles.headerBtn} onClick={onNew} title="New blank assessment">New</button>
+            <button style={{ ...styles.headerBtn, fontSize: 16 }} onClick={() => setShowSettings(!showSettings)} title="Settings">⚙️</button>
           </div>
         </div>
       </div>
@@ -71,6 +82,36 @@ export default function Header({ inquiryName, setInquiryName, consultDate, setCo
           )}
         </div>
       )}
+
+      {showSettings && (
+        <div style={styles.settingsPanel}>
+          <div style={styles.savesPanelHeader}>
+            <h3 style={styles.savesTitle}>⚙️ Settings</h3>
+            <button style={styles.closeBtn} onClick={() => setShowSettings(false)}>&times;</button>
+          </div>
+          <div style={styles.settingsBody}>
+            <div style={styles.settingsSection}>
+              <label style={styles.settingsLabel}>Gemini API Key</label>
+              <p style={styles.settingsHint}>Required for AI-generated assessments and commentary. Get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" style={{ color: "#3A5BA0" }}>Google AI Studio</a>.</p>
+              <div style={styles.keyRow}>
+                <input
+                  style={styles.keyInput}
+                  type="password"
+                  placeholder="Enter your Gemini API key..."
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                />
+                <button style={styles.saveKeyBtn} onClick={handleSaveKey}>
+                  {keySaved ? "✓ Saved" : "Save Key"}
+                </button>
+              </div>
+              {hasApiKey() && (
+                <p style={styles.keyStatus}>✅ API key configured — AI features enabled</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -97,4 +138,13 @@ const styles = {
   saveDate: { fontSize: 11, color: "#718096" },
   saveActions: { display: "flex", gap: 6 },
   actionBtn: { padding: "4px 12px", borderRadius: 5, border: "1px solid #d0d7e2", background: "#fff", fontSize: 11, cursor: "pointer", fontWeight: 500, color: "#3A5BA0" },
+  settingsPanel: { background: "#fff", borderRadius: 12, border: "1px solid #e0e5ec", marginBottom: 24, overflow: "hidden" },
+  settingsBody: { padding: "20px 24px" },
+  settingsSection: { marginBottom: 16 },
+  settingsLabel: { fontSize: 14, fontWeight: 600, color: "#1B2A4A", marginBottom: 4, display: "block" },
+  settingsHint: { fontSize: 12, color: "#718096", marginBottom: 10, marginTop: 4 },
+  keyRow: { display: "flex", gap: 8, alignItems: "center" },
+  keyInput: { flex: 1, padding: "8px 12px", borderRadius: 6, border: "1px solid #d0d7e2", fontSize: 13, fontFamily: "inherit", outline: "none", background: "#fafbfd" },
+  saveKeyBtn: { padding: "8px 18px", borderRadius: 6, border: "none", background: "#3A5BA0", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" },
+  keyStatus: { fontSize: 12, color: "#70AD47", marginTop: 8, marginBottom: 0 },
 };

@@ -1,6 +1,23 @@
+import { useState } from "react";
 import { RESPONSES, riskColor, riskLabel, responseColor, responseIcon } from "../data/phases";
+import { generatePhaseCommentary, hasApiKey } from "../utils/ai";
 
-export default function QuestionPanel({ phase, responses, notes, showGuidance, onResponse, onNote, onToggleGuidance, phaseCommentary, onPhaseComment, onClose }) {
+export default function QuestionPanel({ phase, responses, notes, showGuidance, onResponse, onNote, onToggleGuidance, phaseCommentary, onPhaseComment, onClose, aiState }) {
+  const [generatingPhase, setGeneratingPhase] = useState(false);
+
+  const handleGeneratePhase = async () => {
+    if (!hasApiKey()) { alert("Please set your Gemini API key in Settings first."); return; }
+    if (!aiState) return;
+    setGeneratingPhase(true);
+    try {
+      const text = await generatePhaseCommentary(aiState, phase.id);
+      onPhaseComment(phase.id, text);
+    } catch (err) {
+      alert(`AI generation failed: ${err.message}`);
+    } finally {
+      setGeneratingPhase(false);
+    }
+  };
   return (
     <div style={styles.panel}>
       <div style={headerStyle(phase.color)}>
@@ -41,10 +58,22 @@ export default function QuestionPanel({ phase, responses, notes, showGuidance, o
       })}
 
       <div style={commentaryStyle(phase.color)}>
-        <div style={commentaryLabelStyle(phase.color)}>{"\u{1F4DD}"} Phase Commentary</div>
-        <p style={styles.commentaryHint}>
-          Free text assessment of this phase overall &mdash; key themes, concerns, strengths, recommendations, and anything that doesn&apos;t fit neatly into individual questions.
-        </p>
+        <div style={styles.commentaryHeader}>
+          <div>
+            <div style={commentaryLabelStyle(phase.color)}>{"\u{1F4DD}"} Phase Commentary</div>
+            <p style={styles.commentaryHint}>
+              Free text assessment of this phase overall &mdash; key themes, concerns, strengths, recommendations, and anything that doesn&apos;t fit neatly into individual questions.
+            </p>
+          </div>
+          <button
+            style={styles.aiBtn}
+            onClick={handleGeneratePhase}
+            disabled={generatingPhase}
+            title={hasApiKey() ? "Generate phase commentary using AI" : "Set API key in Settings first"}
+          >
+            {generatingPhase ? "⏳ Generating..." : "✨ Generate with AI"}
+          </button>
+        </div>
         <textarea
           style={styles.commentaryTextarea}
           placeholder={`Your overall assessment of ${phase.name}...`}
@@ -94,6 +123,8 @@ const styles = {
   guidanceToggle: { background: "none", border: "none", color: "#3A5BA0", cursor: "pointer", fontSize: 12, fontWeight: 500, padding: "4px 0", marginTop: 4 },
   guidance: { margin: "8px 0 0 0", padding: "12px 16px", background: "#f0f4fa", borderRadius: 8, fontSize: 13, lineHeight: 1.6, color: "#2d3748", borderLeft: "3px solid #3A5BA0" },
   noteInput: { width: "100%", marginTop: 8, padding: "8px 12px", border: "1px solid #d0d7e2", borderRadius: 6, fontSize: 13, fontFamily: "inherit", resize: "vertical", minHeight: 32, outline: "none", background: "#fafbfd", boxSizing: "border-box" },
-  commentaryHint: { fontSize: 12, color: "#718096", marginBottom: 10 },
+  commentaryHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 8 },
+  commentaryHint: { fontSize: 12, color: "#718096", marginBottom: 0 },
   commentaryTextarea: { width: "100%", padding: "12px 16px", border: "1px solid #d0d7e2", borderRadius: 8, fontSize: 13, fontFamily: "inherit", resize: "vertical", minHeight: 80, outline: "none", background: "#fff", lineHeight: 1.6, boxSizing: "border-box" },
+  aiBtn: { padding: "6px 14px", borderRadius: 6, border: "1px solid #7C3AED", background: "linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)", color: "#fff", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", transition: "opacity 0.2s", flexShrink: 0 },
 };

@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { PHASES } from "./data/phases";
 import { saveAssessment, loadAssessment, getCurrentAssessmentId } from "./utils/persistence";
+import { generateOverallAssessment, hasApiKey } from "./utils/ai";
 import Header from "./components/Header";
 import ProgressBar from "./components/ProgressBar";
 import PhaseCard from "./components/PhaseCard";
@@ -25,6 +26,7 @@ function App() {
   const [customBudget, setCustomBudget] = useState("");
   const [customDuration, setCustomDuration] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
+  const [generatingOverall, setGeneratingOverall] = useState(false);
 
   // Auto-load last assessment on mount
   useEffect(() => {
@@ -139,6 +141,22 @@ function App() {
   const totalQuestions = useMemo(() => PHASES.reduce((sum, p) => sum + p.questions.length, 0), []);
   const highRiskGaps = useMemo(() => gapAnalysis.filter((g) => g.question.risk === "high").length, [gapAnalysis]);
 
+  const handleGenerateOverall = useCallback(async () => {
+    if (!hasApiKey()) { alert("Please set your Gemini API key in Settings first."); return; }
+    setGeneratingOverall(true);
+    try {
+      const text = await generateOverallAssessment({
+        inquiryName, consultDate, responses, notes, phaseCommentary,
+        gapAnalysis, phaseStats, phases: PHASES, selectedScale, customBudget, customDuration,
+      });
+      setOverallCommentary(text);
+    } catch (err) {
+      alert(`AI generation failed: ${err.message}`);
+    } finally {
+      setGeneratingOverall(false);
+    }
+  }, [inquiryName, consultDate, responses, notes, phaseCommentary, gapAnalysis, phaseStats, selectedScale, customBudget, customDuration]);
+
   const activePhase = PHASES.find((p) => p.id === currentPhase);
 
   return (
@@ -188,6 +206,10 @@ function App() {
           phaseCommentary={phaseCommentary}
           onPhaseComment={setPhaseComment}
           onClose={() => setCurrentPhase(null)}
+          aiState={{
+            inquiryName, consultDate, responses, notes, phaseCommentary,
+            gapAnalysis, phaseStats, phases: PHASES, selectedScale, customBudget, customDuration,
+          }}
         />
       )}
 
@@ -206,8 +228,20 @@ function App() {
 
       {/* Overall Assessment */}
       <div style={styles.overallSection}>
-        <div style={styles.overallLabel}>Overall Assessment</div>
-        <p style={styles.overallSublabel}>Your holistic narrative assessment of the inquiry&apos;s readiness, key risks, and priority recommendations. This sits at the top of the report.</p>
+        <div style={styles.overallHeader}>
+          <div>
+            <div style={styles.overallLabel}>Overall Assessment</div>
+            <p style={styles.overallSublabel}>Your holistic narrative assessment of the inquiry&apos;s readiness, key risks, and priority recommendations. This sits at the top of the report.</p>
+          </div>
+          <button
+            style={styles.aiBtn}
+            onClick={handleGenerateOverall}
+            disabled={generatingOverall}
+            title={hasApiKey() ? "Generate assessment using AI" : "Set API key in Settings first"}
+          >
+            {generatingOverall ? "⏳ Generating..." : "✨ Generate with AI"}
+          </button>
+        </div>
         <textarea
           style={styles.overallTextarea}
           placeholder="Overall consulting assessment..."
@@ -242,9 +276,11 @@ const styles = {
   app: { fontFamily: "'Segoe UI', Arial, sans-serif", maxWidth: 1200, margin: "0 auto", padding: "16px 24px", background: "#f8f9fb", minHeight: "100vh", color: "#1a1a2e" },
   phaseGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12, marginBottom: 24 },
   overallSection: { background: "#fff", borderRadius: 12, border: "1px solid #e0e5ec", padding: 24, marginBottom: 24 },
+  overallHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 12 },
   overallLabel: { fontSize: 16, fontWeight: 600, color: "#1B2A4A", marginBottom: 4 },
-  overallSublabel: { fontSize: 12, color: "#718096", marginBottom: 12 },
+  overallSublabel: { fontSize: 12, color: "#718096", marginBottom: 0 },
   overallTextarea: { width: "100%", padding: "14px 18px", border: "1px solid #d0d7e2", borderRadius: 8, fontSize: 14, fontFamily: "inherit", resize: "vertical", minHeight: 120, outline: "none", background: "#fafbfd", lineHeight: 1.7, boxSizing: "border-box" },
+  aiBtn: { padding: "8px 18px", borderRadius: 8, border: "1px solid #7C3AED", background: "linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", transition: "opacity 0.2s", flexShrink: 0 },
   saveToast: { position: "fixed", top: 20, right: 20, background: "#70AD47", color: "#fff", padding: "10px 24px", borderRadius: 8, fontSize: 13, fontWeight: 600, zIndex: 1000, boxShadow: "0 2px 12px rgba(0,0,0,0.15)" },
 };
 
